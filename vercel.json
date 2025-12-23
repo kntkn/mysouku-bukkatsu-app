@@ -1,6 +1,6 @@
 {
   "functions": {
-    "index.py": {
+    "api/root.py": {
       "maxDuration": 60
     },
     "api/index.py": {
@@ -9,12 +9,16 @@
   },
   "routes": [
     {
+      "src": "/api/health",
+      "dest": "/api/index.py"
+    },
+    {
       "src": "/api/(.*)",
       "dest": "/api/index.py"
     },
     {
       "src": "/(.*)",
-      "dest": "/index.py"
+      "dest": "/api/root.py"
     }
   ]
 }
