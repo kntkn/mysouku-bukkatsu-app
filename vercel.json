@@ -1,13 +1,7 @@
 {
   "functions": {
-    "app_lite.py": {
-      "maxDuration": 300
+    "api/index.py": {
+      "maxDuration": 60
     }
-  },
-  "env": {
-    "PYTHONPATH": "/var/task",
-    "STREAMLIT_SERVER_HEADLESS": "true",
-    "STREAMLIT_SERVER_ENABLE_CORS": "false",
-    "STREAMLIT_BROWSER_GATHER_USAGE_STATS": "false"
   }
 }
