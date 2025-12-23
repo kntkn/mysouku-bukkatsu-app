@@ -1,16 +1,4 @@
-"""
-Vercel Root Handler for Mysouku Bukkatsu App
-"""
-from http.server import HTTPStatus
-
-def handler(request):
-    if request.method != 'GET':
-        return {
-            'statusCode': 405,
-            'body': 'Method Not Allowed'
-        }
-    
-    html = """<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="utf-8">
@@ -136,13 +124,4 @@ def handler(request):
         </div>
     </div>
 </body>
-</html>"""
-
-    return {
-        'statusCode': 200,
-        'headers': {
-            'Content-Type': 'text/html; charset=utf-8',
-            'Cache-Control': 'public, max-age=300'
-        },
-        'body': html
-    }
+</html>
