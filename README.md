@@ -6,7 +6,8 @@
 
 ### 📱 クラウド版（軽量）
 **PDF解析・レポート生成のみ**  
-🔗 **[https://mysouku-bukkatsu-app.vercel.app](https://mysouku-bukkatsu-app.vercel.app)**
+🔗 **[https://mysouku-bukkatsu-app.vercel.app](https://mysouku-bukkatsu-app.vercel.app)**  
+💡 *認証が必要な場合は、直接GitHub経由でローカル実行をお試しください*
 
 ### 💻 完全版（ローカル）
 **物確機能付きフル機能**
