@@ -1,22 +1,25 @@
 {
   "builds": [
     {
-      "src": "app.py",
+      "src": "app_lite.py",
       "use": "@vercel/python"
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "app.py"
+      "dest": "app_lite.py"
     }
   ],
   "functions": {
-    "app.py": {
+    "app_lite.py": {
       "maxDuration": 300
     }
   },
   "env": {
-    "PYTHONPATH": "/var/task"
+    "PYTHONPATH": "/var/task",
+    "STREAMLIT_SERVER_HEADLESS": "true",
+    "STREAMLIT_SERVER_ENABLE_CORS": "false",
+    "STREAMLIT_BROWSER_GATHER_USAGE_STATS": "false"
   }
 }

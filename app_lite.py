@@ -31,9 +31,15 @@ if 'extracted_file' not in st.session_state:
 def create_temp_directories():
     """一時ディレクトリを作成"""
     if 'temp_dirs' not in st.session_state:
-        st.session_state.temp_dirs = {
-            'reports': tempfile.mkdtemp(prefix='reports_')
-        }
+        try:
+            st.session_state.temp_dirs = {
+                'reports': tempfile.mkdtemp(prefix='reports_')
+            }
+        except Exception:
+            # フォールバック: 現在ディレクトリを使用
+            st.session_state.temp_dirs = {
+                'reports': '.'
+            }
 
 def main():
     """メイン関数"""
