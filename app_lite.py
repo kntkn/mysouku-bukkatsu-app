@@ -3,7 +3,6 @@
 PDF解析・物確検索機能（スクレイピングベース）
 """
 import streamlit as st
-import pandas as pd
 import time
 import os
 from pathlib import Path
@@ -14,11 +13,29 @@ import tempfile
 sys.path.append(str(Path(__file__).parent / "src"))
 sys.path.append(str(Path(__file__).parent))
 
-from src.pdf_analyzer import PDFAnalyzer
-from src.property_extractor import PropertyExtractor
-from src.report_generator import ReportGenerator
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except ImportError:
+    PANDAS_AVAILABLE = False
+
+try:
+    from src.pdf_analyzer import PDFAnalyzer
+    from src.property_extractor import PropertyExtractor
+    from src.report_generator import ReportGenerator
+    PDF_AVAILABLE = True
+except ImportError:
+    PDF_AVAILABLE = False
+
 from src.cloud_checker import CloudPropertyChecker
-from config.settings import STREAMLIT_CONFIG, PDF_CONFIG
+
+# 簡易設定
+STREAMLIT_CONFIG = {
+    "page_title": "マイソク物確自動化アプリ",
+    "page_icon": "🏠",
+    "layout": "wide",
+    "initial_sidebar_state": "expanded"
+}
 
 # Streamlit設定
 st.set_page_config(**STREAMLIT_CONFIG)
@@ -95,6 +112,42 @@ def main():
     
     with tab1:
         st.header("📄 マイソクPDF処理")
+        
+        if not PDF_AVAILABLE:
+            st.error("❌ PDF処理機能は現在利用できません（依存関係不足）")
+            st.info("💡 代替案: 手動で物件情報を入力して物確機能をテストできます")
+            
+            # 手動入力フォーム
+            with st.expander("🖊️ 手動物件入力（テスト用）"):
+                with st.form("manual_input"):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        address = st.text_input("住所", value="東京都渋谷区")
+                        rent = st.text_input("賃料", value="15万円")
+                    with col2:
+                        layout = st.text_input("間取り", value="1K")
+                        station = st.text_input("最寄り駅", value="渋谷駅徒歩5分")
+                    
+                    if st.form_submit_button("➕ テスト物件追加"):
+                        # 簡易プロパティクラス
+                        class TestProperty:
+                            def __init__(self, address, rent, layout, station):
+                                self.property_id = f"TEST_{len(st.session_state.properties)+1:03d}"
+                                self.address = address
+                                self.rent = rent
+                                self.layout = layout
+                                self.station_info = station
+                                self.area = ""
+                                self.age = ""
+                                self.management_fee = ""
+                                self.walk_time = ""
+                                self.source_file = "手動入力"
+                        
+                        test_prop = TestProperty(address, rent, layout, station)
+                        st.session_state.properties.append(test_prop)
+                        st.success(f"✅ テスト物件を追加しました: {address}")
+                        st.experimental_rerun()
+            return
         
         # ファイルアップロード
         uploaded_files = st.file_uploader(
@@ -275,17 +328,36 @@ def main():
                             layout_counts[prop.layout] = layout_counts.get(prop.layout, 0) + 1
                     
                     if layout_counts:
-                        layout_df = pd.DataFrame(
-                            list(layout_counts.items()), 
-                            columns=['間取り', '件数']
-                        )
-                        st.bar_chart(layout_df.set_index('間取り'))
+                        if PANDAS_AVAILABLE:
+                            layout_df = pd.DataFrame(
+                                list(layout_counts.items()), 
+                                columns=['間取り', '件数']
+                            )
+                            st.bar_chart(layout_df.set_index('間取り'))
+                        else:
+                            # pandasなしでの表示
+                            st.write("**間取り分布:**")
+                            for layout, count in layout_counts.items():
+                                st.write(f"- {layout}: {count}件")
     
     with tab4:
         st.header("📋 レポート生成・ダウンロード")
         
         if not st.session_state.properties:
-            st.warning("⚠️ まず PDF処理を完了してください")
+            st.warning("⚠️ まず物件情報を用意してください")
+        elif not PDF_AVAILABLE:
+            st.error("❌ レポート生成機能は現在利用できません（依存関係不足）")
+            
+            # 簡易結果表示
+            if st.session_state.bukkatsu_results:
+                st.subheader("📊 物確結果サマリー")
+                
+                total = len(st.session_state.bukkatsu_results)
+                found = sum(1 for r in st.session_state.bukkatsu_results if r.get('overall_found'))
+                
+                st.metric("総物件数", total)
+                st.metric("発見件数", found) 
+                st.metric("発見率", f"{found/total*100:.1f}%")
         else:
             st.subheader("📄 レポート形式選択")
             
