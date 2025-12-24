@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent / "src"))
 
 from src.cloud_checker import CloudPropertyChecker
+from src.simple_pdf_analyzer import SimplePDFAnalyzer, PropertyData
 
 app = Flask(__name__)
 
@@ -136,30 +137,60 @@ HTML_TEMPLATE = """
     <div class="container">
         <h1>🏠 マイソク物確自動化アプリ</h1>
         
-        <form method="POST" action="/">
-            <div class="grid">
-                <div class="form-group">
-                    <label for="address">住所</label>
-                    <input type="text" id="address" name="address" value="{{ request.form.get('address', '東京都渋谷区') }}" required>
-                </div>
-                <div class="form-group">
-                    <label for="rent">賃料</label>
-                    <input type="text" id="rent" name="rent" value="{{ request.form.get('rent', '15万円') }}" required>
-                </div>
-                <div class="form-group">
-                    <label for="layout">間取り</label>
-                    <input type="text" id="layout" name="layout" value="{{ request.form.get('layout', '1K') }}" required>
-                </div>
-                <div class="form-group">
-                    <label for="station">最寄り駅</label>
-                    <input type="text" id="station" name="station" value="{{ request.form.get('station', '渋谷駅徒歩5分') }}" required>
-                </div>
-            </div>
+        {% if error %}
+        <div style="margin-bottom: 30px; padding: 20px; background: #f8d7da; color: #721c24; border-radius: 10px; border-left: 5px solid #dc3545;">
+            <h3>❌ エラー</h3>
+            <p>{{ error }}</p>
+        </div>
+        {% endif %}
+        
+        <!-- PDF アップロード -->
+        <div style="margin-bottom: 40px; padding: 20px; background: #f8f9fa; border-radius: 10px; border-left: 5px solid #667eea;">
+            <h2>📄 マイソクPDFアップロード</h2>
+            <p style="margin-bottom: 15px; color: #666;">レインズからダウンロードしたマイソクPDFをアップロードしてください</p>
             
-            <div style="text-align: center;">
-                <button type="submit" class="btn">🔍 物確実行</button>
-            </div>
-        </form>
+            <form method="POST" action="/upload" enctype="multipart/form-data">
+                <div style="display: flex; gap: 15px; align-items: end; flex-wrap: wrap;">
+                    <div class="form-group" style="flex: 1; min-width: 300px; margin-bottom: 0;">
+                        <label for="pdf_file">PDFファイル</label>
+                        <input type="file" id="pdf_file" name="pdf_file" accept=".pdf" required 
+                               style="padding: 8px; border: 2px dashed #667eea; background: white;">
+                    </div>
+                    <button type="submit" class="btn" style="margin-bottom: 0;">📤 アップロード・解析</button>
+                </div>
+            </form>
+        </div>
+        
+        <!-- 手動入力（代替手段） -->
+        <div style="margin-bottom: 30px;">
+            <h2>✏️ 手動入力（テスト用）</h2>
+            <p style="margin-bottom: 15px; color: #666;">PDFが利用できない場合の代替手段</p>
+            
+            <form method="POST" action="/manual">
+                <div class="grid">
+                    <div class="form-group">
+                        <label for="address">住所</label>
+                        <input type="text" id="address" name="address" value="{{ request.form.get('address', '東京都渋谷区') }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="rent">賃料</label>
+                        <input type="text" id="rent" name="rent" value="{{ request.form.get('rent', '15万円') }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="layout">間取り</label>
+                        <input type="text" id="layout" name="layout" value="{{ request.form.get('layout', '1K') }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="station">最寄り駅</label>
+                        <input type="text" id="station" name="station" value="{{ request.form.get('station', '渋谷駅徒歩5分') }}" required>
+                    </div>
+                </div>
+                
+                <div style="text-align: center;">
+                    <button type="submit" class="btn">🔍 手動で物確実行</button>
+                </div>
+            </form>
+        </div>
         
         {% if results %}
         <div class="results">
@@ -181,9 +212,14 @@ HTML_TEMPLATE = """
             </div>
             
             <div class="property-card">
-                <h3>物件: {{ results.property.address }}</h3>
+                <h3>物件情報: {{ results.property.address }}</h3>
                 <p><strong>賃料:</strong> {{ results.property.rent }} | <strong>間取り:</strong> {{ results.property.layout }}</p>
-                <p><strong>最寄り駅:</strong> {{ results.property.station }}</p>
+                <p><strong>最寄り駅:</strong> {{ results.property.station_info }}</p>
+                {% if results.property.area %}<p><strong>面積:</strong> {{ results.property.area }}</p>{% endif %}
+                {% if results.property.age %}<p><strong>築年数:</strong> {{ results.property.age }}</p>{% endif %}
+                {% if results.source == 'PDF' %}
+                <p style="color: #667eea;"><strong>データソース:</strong> PDFから自動抽出</p>
+                {% endif %}
                 
                 <div style="margin-top: 15px;">
                     <p><strong>ITANDI:</strong> 
@@ -238,22 +274,36 @@ class SimpleProperty:
         self.layout = layout
         self.station_info = station
 
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/', methods=['GET'])
 def index():
-    if request.method == 'POST':
-        # フォームデータ取得
-        address = request.form['address']
-        rent = request.form['rent']
-        layout = request.form['layout']
-        station = request.form['station']
+    return render_template_string(HTML_TEMPLATE)
+
+@app.route('/upload', methods=['POST'])
+def upload_pdf():
+    if 'pdf_file' not in request.files:
+        return render_template_string(HTML_TEMPLATE, error="PDFファイルが選択されていません")
+    
+    file = request.files['pdf_file']
+    if file.filename == '':
+        return render_template_string(HTML_TEMPLATE, error="ファイルが選択されていません")
+    
+    if not file.filename.lower().endswith('.pdf'):
+        return render_template_string(HTML_TEMPLATE, error="PDFファイルを選択してください")
+    
+    try:
+        # PDF解析
+        analyzer = SimplePDFAnalyzer()
+        result = analyzer.analyze_pdf(file)
         
-        # 物件作成
-        property_data = {
-            'address': address,
-            'rent': rent,
-            'layout': layout,
-            'station_info': station
-        }
+        if not result['success']:
+            return render_template_string(HTML_TEMPLATE, error=f"PDF解析エラー: {result['error']}")
+        
+        properties = result['properties']
+        if not properties:
+            return render_template_string(HTML_TEMPLATE, error="PDFから物件情報を抽出できませんでした")
+        
+        # 最初の物件で物確実行（複数物件対応は今後追加）
+        property_data = properties[0]
         
         # 物確実行
         checker = CloudPropertyChecker()
@@ -268,21 +318,70 @@ def index():
             suumo_result.get('found', False)
         ])
         
+        # PropertyDataオブジェクト作成
+        property_obj = PropertyData(property_data)
+        
         # 結果をテンプレートに渡す
         results = {
             'total': 1,
             'found': 1 if overall_found else 0,
             'rate': 100.0 if overall_found else 0.0,
-            'property': SimpleProperty(address, rent, layout, station),
+            'property': property_obj,
             'itandi': itandi_result,
             'ierabu': ierabu_result,
             'suumo': suumo_result,
-            'overall_found': overall_found
+            'overall_found': overall_found,
+            'source': 'PDF'  # PDFから抽出したことを明示
         }
         
         return render_template_string(HTML_TEMPLATE, results=results)
+        
+    except Exception as e:
+        return render_template_string(HTML_TEMPLATE, error=f"処理エラー: {str(e)}")
+
+@app.route('/manual', methods=['POST'])
+def manual_check():
+    # 既存の手動入力処理をルート分離
+    address = request.form['address']
+    rent = request.form['rent']
+    layout = request.form['layout']
+    station = request.form['station']
     
-    return render_template_string(HTML_TEMPLATE)
+    # 物件作成
+    property_data = {
+        'address': address,
+        'rent': rent,
+        'layout': layout,
+        'station_info': station
+    }
+    
+    # 物確実行
+    checker = CloudPropertyChecker()
+    
+    itandi_result = checker.search_itandi(property_data)
+    ierabu_result = checker.search_ierabu(property_data)
+    suumo_result = checker.search_suumo(property_data)
+    
+    overall_found = any([
+        itandi_result.get('found', False),
+        ierabu_result.get('found', False),
+        suumo_result.get('found', False)
+    ])
+    
+    # 結果をテンプレートに渡す
+    results = {
+        'total': 1,
+        'found': 1 if overall_found else 0,
+        'rate': 100.0 if overall_found else 0.0,
+        'property': SimpleProperty(address, rent, layout, station),
+        'itandi': itandi_result,
+        'ierabu': ierabu_result,
+        'suumo': suumo_result,
+        'overall_found': overall_found,
+        'source': 'Manual'  # 手動入力であることを明示
+    }
+    
+    return render_template_string(HTML_TEMPLATE, results=results)
 
 @app.route('/api/health')
 def health():
