@@ -1,6 +1,6 @@
 """
-マイソク物確自動化アプリ - Vercel版（ライト）
-PDF解析・レポート機能のみ（ブラウザ自動化は無効）
+マイソク物確自動化アプリ - クラウド版
+PDF解析・物確検索機能（スクレイピングベース）
 """
 import streamlit as st
 import pandas as pd
@@ -17,6 +17,7 @@ sys.path.append(str(Path(__file__).parent))
 from src.pdf_analyzer import PDFAnalyzer
 from src.property_extractor import PropertyExtractor
 from src.report_generator import ReportGenerator
+from src.cloud_checker import CloudPropertyChecker
 from config.settings import STREAMLIT_CONFIG, PDF_CONFIG
 
 # Streamlit設定
@@ -27,6 +28,8 @@ if 'properties' not in st.session_state:
     st.session_state.properties = []
 if 'extracted_file' not in st.session_state:
     st.session_state.extracted_file = None
+if 'bukkatsu_results' not in st.session_state:
+    st.session_state.bukkatsu_results = []
 
 def create_temp_directories():
     """一時ディレクトリを作成"""
@@ -45,11 +48,11 @@ def main():
     """メイン関数"""
     create_temp_directories()
     
-    st.title("🏠 マイソク解析アプリ（クラウド版）")
+    st.title("🏠 マイソク物確自動化アプリ（クラウド版）")
     st.markdown("---")
     
-    # 注意書き
-    st.info("💡 **クラウド版の制限**: PDF解析・レポート生成のみ利用可能です。物確機能をご利用の場合は、ローカル版をダウンロードしてご利用ください。")
+    # 機能説明
+    st.info("💡 **クラウド版機能**: PDF解析・レポート生成・物確検索（Web検索ベース）が利用可能です。")
     
     # サイドバー
     with st.sidebar:
@@ -59,6 +62,11 @@ def main():
         st.subheader("処理状況")
         if st.session_state.properties:
             st.success(f"✅ 物件抽出: {len(st.session_state.properties)}件")
+            if st.session_state.bukkatsu_results:
+                found_count = sum(1 for r in st.session_state.bukkatsu_results if r.get('overall_found'))
+                st.success(f"✅ 物確完了: {found_count}/{len(st.session_state.bukkatsu_results)}件発見")
+            else:
+                st.info("🔍 物確実行待ち")
         else:
             st.info("📄 PDFをアップロードしてください")
         
@@ -79,10 +87,11 @@ def main():
         if st.button("🔄 リセット", type="secondary"):
             st.session_state.properties = []
             st.session_state.extracted_file = None
+            st.session_state.bukkatsu_results = []
             st.experimental_rerun()
     
     # メインコンテンツ
-    tab1, tab2, tab3 = st.tabs(["📄 PDF処理", "📊 結果確認", "📋 レポート"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📄 PDF処理", "🔍 物確実行", "📊 結果確認", "📋 レポート"])
     
     with tab1:
         st.header("📄 マイソクPDF処理")
@@ -146,6 +155,72 @@ def main():
                             st.error(f"❌ PDF解析エラー: {str(e)}")
     
     with tab2:
+        st.header("🔍 物確実行")
+        
+        if not st.session_state.properties:
+            st.warning("⚠️ まずPDF処理を完了してください")
+        else:
+            st.subheader("📋 抽出済み物件")
+            st.info(f"✅ {len(st.session_state.properties)}件の物件が抽出済みです")
+            
+            # 物確実行ボタン
+            col1, col2 = st.columns([3, 1])
+            
+            with col1:
+                st.write("**対象サイト**: ITANDI、いえらぶBB、SUUMO")
+                st.write("**実行方式**: Web検索ベース（クラウド版）")
+            
+            with col2:
+                if st.button("🚀 物確実行", type="primary", use_container_width=True):
+                    with st.spinner("物確実行中..."):
+                        try:
+                            checker = CloudPropertyChecker()
+                            
+                            # 物確実行
+                            st.session_state.bukkatsu_results = checker.perform_bukkatsu_check(
+                                st.session_state.properties
+                            )
+                            
+                            st.success(f"✅ {len(st.session_state.bukkatsu_results)}件の物確が完了しました！")
+                            
+                        except Exception as e:
+                            st.error(f"❌ 物確エラー: {str(e)}")
+            
+            # 物確結果プレビュー
+            if st.session_state.bukkatsu_results:
+                st.subheader("📊 物確結果プレビュー")
+                
+                # サマリー
+                total_results = len(st.session_state.bukkatsu_results)
+                found_count = sum(1 for r in st.session_state.bukkatsu_results if r.get('overall_found'))
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("総確認数", total_results)
+                with col2:
+                    st.metric("発見件数", found_count)
+                with col3:
+                    st.metric("発見率", f"{found_count/total_results*100:.1f}%")
+                
+                # 結果テーブル
+                result_data = []
+                for result in st.session_state.bukkatsu_results[:5]:  # 最初の5件
+                    prop = result['property']
+                    result_data.append({
+                        "物件ID": prop.property_id,
+                        "住所": prop.address[:30] + "..." if len(prop.address) > 30 else prop.address,
+                        "ITANDI": "✅" if result['itandi'].get('found') else "❌",
+                        "いえらぶBB": "✅" if result['ierabu'].get('found') else "❌", 
+                        "SUUMO": "✅" if result['suumo'].get('found') else "❌",
+                        "総合": "✅ 発見" if result.get('overall_found') else "❌ 未発見"
+                    })
+                
+                st.dataframe(result_data, use_container_width=True)
+                
+                if len(st.session_state.bukkatsu_results) > 5:
+                    st.info(f"プレビューは最初の5件のみ表示しています。全{len(st.session_state.bukkatsu_results)}件")
+
+    with tab3:
         st.header("📊 抽出結果確認")
         
         if not st.session_state.properties:
@@ -206,7 +281,7 @@ def main():
                         )
                         st.bar_chart(layout_df.set_index('間取り'))
     
-    with tab3:
+    with tab4:
         st.header("📋 レポート生成・ダウンロード")
         
         if not st.session_state.properties:
@@ -233,10 +308,21 @@ def main():
                                 # レポート生成
                                 report_generator = ReportGenerator(st.session_state.temp_dirs['reports'])
                                 
+                                # 物確結果をレポートに含める
+                                itandi_results = []
+                                ierabu_results = []
+                                
+                                if st.session_state.bukkatsu_results:
+                                    for result in st.session_state.bukkatsu_results:
+                                        if result['itandi'].get('found'):
+                                            itandi_results.append(result)
+                                        if result['ierabu'].get('found'):
+                                            ierabu_results.append(result)
+                                
                                 report_files = report_generator.generate_comprehensive_report(
                                     st.session_state.properties,
-                                    [],  # 物確結果なし
-                                    []   # 物確結果なし
+                                    itandi_results,
+                                    ierabu_results
                                 )
                                 
                                 st.success("✅ レポート生成完了!")
