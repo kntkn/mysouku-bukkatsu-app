@@ -561,8 +561,8 @@ HTML_TEMPLATE = """
 <body>
     <div class="container">
         <div class="header">
-            <h1>🤖 AI物確システム</h1>
-            <p class="subtitle">レインズPDFを投入するだけで、全自動物件確認を実行</p>
+            <h1>🏢 不動産物確システム</h1>
+            <p class="subtitle">物件情報PDFから自動物確実行 - ITANDI・いえらぶBB・ATBBを一括検索</p>
         </div>
         
         {% if error %}
@@ -575,10 +575,10 @@ HTML_TEMPLATE = """
         <form method="POST" action="/upload" enctype="multipart/form-data" id="uploadForm">
             <div class="upload-zone" id="uploadZone">
                 <div class="upload-icon">📄</div>
-                <h2 class="upload-title">マイソクPDFをドロップ</h2>
+                <h2 class="upload-title">物件PDF解析</h2>
                 <p class="upload-subtitle">
-                    レインズからダウンロードしたPDFファイルをここにドラッグ&ドロップ<br>
-                    または下記ボタンからファイルを選択してください
+                    物件情報のPDFファイルをドラッグ&ドロップ<br>
+                    または下記ボタンから選択して物確を開始
                 </p>
                 
                 <div class="file-input-wrapper">
@@ -589,25 +589,17 @@ HTML_TEMPLATE = """
                 </div>
                 
                 <button type="submit" class="start-btn" id="startBtn">
-                    🚀 AI物確スタート
+                    🔍 物確実行
                 </button>
                 
-                <div style="margin-top: 20px;">
-                    <p style="color: var(--color-muted); margin-bottom: 10px;">または</p>
-                    <form method="POST" action="/demo" style="display: inline;">
-                        <button type="submit" class="start-btn" style="background: linear-gradient(135deg, var(--color-warning) 0%, #ffb347 100%); box-shadow: 0 8px 24px rgba(255, 149, 0, 0.3);">
-                            🎯 デモで試す
-                        </button>
-                    </form>
-                </div>
             </div>
         </form>
         
         {% if results %}
         <div class="results-container">
             <div class="results-header">
-                <h2>🎯 AI物確完了</h2>
-                <p>{{ results.property.address }}の物確結果</p>
+                <h2>📊 物確結果</h2>
+                <p>{{ results.property.address }}の確認状況</p>
             </div>
             
             <div class="metrics-grid">
@@ -947,56 +939,6 @@ def upload_pdf():
         return render_template_string(HTML_TEMPLATE, error=f"予期しないエラーが発生しました: {str(e)}")
 
 
-@app.route('/demo', methods=['GET', 'POST'])
-def demo():
-    """デモ用物確実行"""
-    if request.method == 'GET':
-        return render_template_string(HTML_TEMPLATE)
-    
-    try:
-        print("🎯 デモモード: 物確実行開始")
-        
-        # デモ用物件データ
-        demo_property = {
-            'property_id': 'DEMO_001',
-            'address': '東京都渋谷区',
-            'rent': '15万円',
-            'layout': '1K',
-            'station': '渋谷駅徒歩5分',
-            'area': '25㎡',
-            'age': '築5年',
-            'source_file': 'demo_property'
-        }
-        
-        # 実際のブラウザ自動化による物確実行
-        print("🤖 実際のブラウザ自動化による物確開始...")
-        browser_checker = RealBrowserPropertyChecker()
-        bukkaku_results = browser_checker.perform_bukkaku(demo_property)
-        
-        # PropertyDataオブジェクト作成
-        from src.simple_pdf_analyzer import PropertyData
-        property_obj = PropertyData(demo_property)
-        
-        # 結果をテンプレートに渡す
-        results = {
-            'total': bukkaku_results['total'],
-            'found': bukkaku_results['found'],
-            'rate': bukkaku_results['rate'],
-            'property': property_obj,
-            'itandi': bukkaku_results['itandi'],
-            'ierabu': bukkaku_results['ierabu'],
-            'suumo': bukkaku_results['suumo'],
-            'overall_found': bukkaku_results['overall_found'],
-            'found_sites': bukkaku_results.get('found_sites', []),
-            'source': 'Demo'  # デモモードであることを明示
-        }
-        
-        print("✅ デモ物確完了")
-        return render_template_string(HTML_TEMPLATE, results=results)
-        
-    except Exception as e:
-        print(f"❌ デモエラー: {str(e)}")
-        return render_template_string(HTML_TEMPLATE, error=f"デモ実行エラー: {str(e)}")
 
 @app.route('/api/health')
 def health():
