@@ -11,9 +11,42 @@ from pathlib import Path
 # srcディレクトリをパスに追加
 sys.path.append(str(Path(__file__).parent / "src"))
 
-from src.cloud_checker import CloudPropertyChecker
-from src.simple_pdf_analyzer import SimplePDFAnalyzer, PropertyData
-from src.real_browser_checker import RealBrowserPropertyChecker
+try:
+    from src.simple_pdf_analyzer import SimplePDFAnalyzer, PropertyData
+    from src.real_browser_checker import RealBrowserPropertyChecker
+    PDF_ANALYZER_AVAILABLE = True
+    BROWSER_CHECKER_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ Import warning: {e}")
+    PDF_ANALYZER_AVAILABLE = False
+    BROWSER_CHECKER_AVAILABLE = False
+    
+    # フォールバック用の簡易クラス
+    class SimplePDFAnalyzer:
+        def analyze_pdf(self, file):
+            return {'success': False, 'error': 'PDF解析機能が利用できません'}
+    
+    class PropertyData:
+        def __init__(self, data):
+            self.address = data.get('address', '住所不明')
+            self.rent = data.get('rent', '賃料不明')
+            self.layout = data.get('layout', '間取り不明')
+            self.station_info = data.get('station', '駅情報不明')
+            self.area = data.get('area', '')
+            self.age = data.get('age', '')
+    
+    class RealBrowserPropertyChecker:
+        def perform_bukkaku(self, property_data):
+            return {
+                'total': 3,
+                'found': 0,
+                'rate': 0,
+                'overall_found': False,
+                'found_sites': [],
+                'itandi': {'found': False, 'confidence': 0.0, 'notes': 'システムエラー'},
+                'ierabu': {'found': False, 'confidence': 0.0, 'notes': 'システムエラー'},
+                'suumo': {'found': False, 'confidence': 0.0, 'notes': 'システムエラー'},
+            }
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB制限
@@ -704,78 +737,109 @@ HTML_TEMPLATE = """
     </div>
     
     <script>
-        // ドラッグ&ドロップ機能
-        const uploadZone = document.getElementById('uploadZone');
-        const fileInput = document.getElementById('pdf_file');
-        
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            uploadZone.addEventListener(eventName, preventDefaults, false);
-        });
-        
-        function preventDefaults(e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-        
-        ['dragenter', 'dragover'].forEach(eventName => {
-            uploadZone.addEventListener(eventName, highlight, false);
-        });
-        
-        ['dragleave', 'drop'].forEach(eventName => {
-            uploadZone.addEventListener(eventName, unhighlight, false);
-        });
-        
-        function highlight(e) {
-            uploadZone.style.borderColor = 'var(--color-accent)';
-            uploadZone.style.backgroundColor = 'rgba(255,77,109,0.05)';
-        }
-        
-        function unhighlight(e) {
-            uploadZone.style.borderColor = 'rgba(255,77,109,0.3)';
-            uploadZone.style.backgroundColor = 'rgba(255,255,255,0.97)';
-        }
-        
-        uploadZone.addEventListener('drop', handleDrop, false);
-        
-        function handleDrop(e) {
-            const dt = e.dataTransfer;
-            const files = dt.files;
+        // DOM要素が完全に読み込まれるまで待機
+        document.addEventListener('DOMContentLoaded', function() {
+            // ドラッグ&ドロップ機能
+            const uploadZone = document.getElementById('uploadZone');
+            const fileInput = document.getElementById('pdf_file');
+            const uploadForm = document.getElementById('uploadForm');
             
-            if (files.length > 0) {
-                fileInput.files = files;
-                updateFileLabel(files[0].name);
+            // DOM要素が存在しない場合は早期return
+            if (!uploadZone || !fileInput || !uploadForm) {
+                console.warn('Required DOM elements not found');
+                return;
             }
-        }
-        
-        fileInput.addEventListener('change', function() {
-            if (this.files.length > 0) {
-                updateFileLabel(this.files[0].name);
+            
+            try {
+                // ドラッグ&ドロップイベントリスナー
+                ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                    uploadZone.addEventListener(eventName, preventDefaults, false);
+                });
+                
+                function preventDefaults(e) {
+                    if (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }
+                }
+                
+                ['dragenter', 'dragover'].forEach(eventName => {
+                    uploadZone.addEventListener(eventName, highlight, false);
+                });
+                
+                ['dragleave', 'drop'].forEach(eventName => {
+                    uploadZone.addEventListener(eventName, unhighlight, false);
+                });
+                
+                function highlight(e) {
+                    if (uploadZone && uploadZone.style) {
+                        uploadZone.style.borderColor = 'var(--color-accent)';
+                        uploadZone.style.backgroundColor = 'rgba(255,61,109,0.05)';
+                    }
+                }
+                
+                function unhighlight(e) {
+                    if (uploadZone && uploadZone.style) {
+                        uploadZone.style.borderColor = 'rgba(255,61,109,0.3)';
+                        uploadZone.style.backgroundColor = 'rgba(255,255,255,0.97)';
+                    }
+                }
+                
+                uploadZone.addEventListener('drop', handleDrop, false);
+                
+                function handleDrop(e) {
+                    if (!e || !e.dataTransfer) return;
+                    
+                    const dt = e.dataTransfer;
+                    const files = dt.files;
+                    
+                    if (files && files.length > 0 && fileInput) {
+                        fileInput.files = files;
+                        updateFileLabel(files[0].name);
+                    }
+                }
+                
+                fileInput.addEventListener('change', function() {
+                    if (this.files && this.files.length > 0) {
+                        updateFileLabel(this.files[0].name);
+                    }
+                });
+                
+                function updateFileLabel(fileName) {
+                    const label = document.querySelector('.file-input-label');
+                    if (label && fileName) {
+                        label.innerHTML = `📄 ${fileName}`;
+                    }
+                }
+                
+                // フォーム送信時のローディング表示
+                uploadForm.addEventListener('submit', function(e) {
+                    const startBtn = document.getElementById('startBtn');
+                    
+                    if (startBtn) {
+                        startBtn.innerHTML = '🔄 物確実行中...';
+                        startBtn.disabled = true;
+                    }
+                    
+                    // ローディングスピナー表示
+                    const loadingHTML = `
+                        <div class="loading-zone">
+                            <div class="loading-spinner"></div>
+                            <h3>AI物確実行中...</h3>
+                            <p>ITANDI・いえらぶBB・ATBB等を巡回中...<br>実際の不動産業務フローに沿って処理しています</p>
+                        </div>
+                    `;
+                    
+                    setTimeout(() => {
+                        if (uploadZone) {
+                            uploadZone.innerHTML = loadingHTML;
+                        }
+                    }, 500);
+                });
+                
+            } catch (error) {
+                console.error('JavaScript initialization error:', error);
             }
-        });
-        
-        function updateFileLabel(fileName) {
-            const label = document.querySelector('.file-input-label');
-            label.innerHTML = `📄 ${fileName}`;
-        }
-        
-        // フォーム送信時のローディング表示
-        document.getElementById('uploadForm').addEventListener('submit', function() {
-            const startBtn = document.getElementById('startBtn');
-            startBtn.innerHTML = '🔄 物確実行中...';
-            startBtn.disabled = true;
-            
-            // ローディングスピナー表示
-            const loadingHTML = `
-                <div class="loading-zone">
-                    <div class="loading-spinner"></div>
-                    <h3>AI物確実行中...</h3>
-                    <p>ITANDI・いえらぶBB・SUUMO等を巡回しています</p>
-                </div>
-            `;
-            
-            setTimeout(() => {
-                uploadZone.innerHTML = loadingHTML;
-            }, 500);
         });
     </script>
 </body>
@@ -797,19 +861,21 @@ def index():
 @app.route('/upload', methods=['POST'])
 def upload_pdf():
     try:
+        # システム状態の確認
+        if not PDF_ANALYZER_AVAILABLE:
+            return render_template_string(HTML_TEMPLATE, error="PDF解析機能が利用できません。管理者にお問い合わせください。")
+        
         # リクエスト詳細をログ
         print(f"📁 Files in request: {list(request.files.keys())}")
-        print(f"📝 Form data: {list(request.form.keys())}")
         print(f"🌐 Request method: {request.method}")
         print(f"📊 Content length: {request.content_length}")
-        print(f"🔧 Content type: {request.content_type}")
         
         if 'pdf_file' not in request.files:
             print("❌ 'pdf_file' not found in request.files")
             return render_template_string(HTML_TEMPLATE, error="PDFファイルが選択されていません。もう一度ファイルを選択してください。")
         
         file = request.files['pdf_file']
-        print(f"📄 File received: {file.filename}, size: {file.content_length if hasattr(file, 'content_length') else 'unknown'}")
+        print(f"📄 File received: {file.filename}")
         
         if not file or file.filename == '' or file.filename is None:
             print("❌ Empty filename")
@@ -822,45 +888,63 @@ def upload_pdf():
         print("✅ File validation passed, starting PDF analysis...")
         
         # PDF解析
-        analyzer = SimplePDFAnalyzer()
-        result = analyzer.analyze_pdf(file)
+        try:
+            analyzer = SimplePDFAnalyzer()
+            result = analyzer.analyze_pdf(file)
+        except Exception as pdf_error:
+            print(f"❌ PDF analysis error: {pdf_error}")
+            return render_template_string(HTML_TEMPLATE, error=f"PDF解析中にエラーが発生しました: {str(pdf_error)}")
         
-        if not result['success']:
-            return render_template_string(HTML_TEMPLATE, error=f"PDF解析エラー: {result['error']}")
+        if not result or not result.get('success'):
+            error_msg = result.get('error', 'PDF解析に失敗しました') if result else 'PDF解析に失敗しました'
+            return render_template_string(HTML_TEMPLATE, error=f"PDF解析エラー: {error_msg}")
         
-        properties = result['properties']
+        properties = result.get('properties', [])
         if not properties:
-            return render_template_string(HTML_TEMPLATE, error="PDFから物件情報を抽出できませんでした")
+            return render_template_string(HTML_TEMPLATE, error="PDFから物件情報を抽出できませんでした。正しい物件PDFファイルかご確認ください。")
         
-        # 最初の物件で物確実行（複数物件対応は今後追加）
+        # 最初の物件で物確実行
         property_data = properties[0]
+        print(f"📍 対象物件: {property_data.get('address', 'Unknown')}")
         
-        # 実際のブラウザ自動化による物確実行
-        print("🤖 実際のブラウザ自動化による物確開始...")
-        browser_checker = RealBrowserPropertyChecker()
-        bukkaku_results = browser_checker.perform_bukkaku(property_data)
+        # 物確実行
+        try:
+            print("🤖 物確システム開始...")
+            browser_checker = RealBrowserPropertyChecker()
+            bukkaku_results = browser_checker.perform_bukkaku(property_data)
+        except Exception as bukkaku_error:
+            print(f"❌ Property verification error: {bukkaku_error}")
+            return render_template_string(HTML_TEMPLATE, error=f"物確処理中にエラーが発生しました: {str(bukkaku_error)}")
         
         # PropertyDataオブジェクト作成
-        property_obj = PropertyData(property_data)
+        try:
+            property_obj = PropertyData(property_data)
+        except Exception as data_error:
+            print(f"❌ Property data error: {data_error}")
+            return render_template_string(HTML_TEMPLATE, error=f"物件データ処理中にエラーが発生しました: {str(data_error)}")
         
         # 結果をテンプレートに渡す
         results = {
-            'total': bukkaku_results['total'],
-            'found': bukkaku_results['found'],
-            'rate': bukkaku_results['rate'],
+            'total': bukkaku_results.get('total', 0),
+            'found': bukkaku_results.get('found', 0),
+            'rate': bukkaku_results.get('rate', 0),
             'property': property_obj,
-            'itandi': bukkaku_results['itandi'],
-            'ierabu': bukkaku_results['ierabu'],
-            'suumo': bukkaku_results['suumo'],
-            'overall_found': bukkaku_results['overall_found'],
+            'itandi': bukkaku_results.get('itandi', {'found': False, 'confidence': 0.0, 'notes': 'エラー'}),
+            'ierabu': bukkaku_results.get('ierabu', {'found': False, 'confidence': 0.0, 'notes': 'エラー'}),
+            'suumo': bukkaku_results.get('suumo', {'found': False, 'confidence': 0.0, 'notes': 'エラー'}),
+            'overall_found': bukkaku_results.get('overall_found', False),
             'found_sites': bukkaku_results.get('found_sites', []),
-            'source': 'PDF'  # PDFから抽出したことを明示
+            'source': 'PDF'
         }
         
+        print(f"✅ 物確完了 - 発見率: {bukkaku_results.get('rate', 0):.1f}%")
         return render_template_string(HTML_TEMPLATE, results=results)
         
     except Exception as e:
-        return render_template_string(HTML_TEMPLATE, error=f"処理エラー: {str(e)}")
+        print(f"❌ Unexpected error in upload_pdf: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return render_template_string(HTML_TEMPLATE, error=f"予期しないエラーが発生しました: {str(e)}")
 
 
 @app.route('/demo', methods=['GET', 'POST'])
