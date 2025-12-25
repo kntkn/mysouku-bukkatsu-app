@@ -13,7 +13,7 @@ sys.path.append(str(Path(__file__).parent / "src"))
 
 from src.cloud_checker import CloudPropertyChecker
 from src.simple_pdf_analyzer import SimplePDFAnalyzer, PropertyData
-from src.browser_checker import BrowserPropertyChecker
+from src.real_browser_checker import RealBrowserPropertyChecker
 
 app = Flask(__name__)
 
@@ -823,9 +823,9 @@ def upload_pdf():
         # 最初の物件で物確実行（複数物件対応は今後追加）
         property_data = properties[0]
         
-        # ブラウザ自動化による物確実行
-        print("🤖 AI物確システム開始...")
-        browser_checker = BrowserPropertyChecker()
+        # 実際のブラウザ自動化による物確実行
+        print("🤖 実際のブラウザ自動化による物確開始...")
+        browser_checker = RealBrowserPropertyChecker()
         bukkaku_results = browser_checker.perform_bukkaku(property_data)
         
         # PropertyDataオブジェクト作成
@@ -872,9 +872,9 @@ def demo():
             'source_file': 'demo_property'
         }
         
-        # ブラウザ自動化による物確実行
-        print("🤖 AI物確システム開始...")
-        browser_checker = BrowserPropertyChecker()
+        # 実際のブラウザ自動化による物確実行
+        print("🤖 実際のブラウザ自動化による物確開始...")
+        browser_checker = RealBrowserPropertyChecker()
         bukkaku_results = browser_checker.perform_bukkaku(demo_property)
         
         # PropertyDataオブジェクト作成
