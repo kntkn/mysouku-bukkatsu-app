@@ -2,7 +2,10 @@
   "builds": [
     {
       "src": "app_flask.py",
-      "use": "@vercel/python"
+      "use": "@vercel/python",
+      "config": {
+        "maxLambdaSize": "50mb"
+      }
     }
   ],
   "routes": [
@@ -11,11 +14,6 @@
       "dest": "app_flask.py"
     }
   ],
-  "functions": {
-    "app_flask.py": {
-      "maxDuration": 60
-    }
-  },
   "headers": [
     {
       "source": "/(.*)",
