@@ -297,7 +297,47 @@ HTML_TEMPLATE = """
             background: rgba(255,255,255,0.95);
             border-radius: 20px;
             margin-top: 30px;
-            backdrop-filter: blur(10px);
+        }
+        
+        .step-progress {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        
+        .step {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            background: #f0f0f0;
+            color: var(--color-muted);
+            transition: all 0.3s ease;
+        }
+        
+        .step.active {
+            background: linear-gradient(135deg, var(--color-accent) 0%, #ff6b8a 100%);
+            color: white;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        .step.completed {
+            background: var(--color-success);
+            color: white;
+        }
+        
+        @media (max-width: 768px) {
+            .step-progress {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .step {
+                padding: 10px 20px;
+                font-size: 0.95rem;
+            }
         }
         
         .loading-spinner {
@@ -460,6 +500,54 @@ HTML_TEMPLATE = """
         .site-card.not-found {
             border-left-color: var(--color-error);
             background: rgba(255,77,77,0.05);
+        }
+        
+        .phone-step-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 16px;
+            padding: 25px;
+            margin: 20px 0;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid var(--color-warning);
+        }
+        
+        .phone-step-card.phone-required {
+            border-left-color: var(--color-warning);
+            background: rgba(255, 149, 0, 0.1);
+        }
+        
+        .phone-step-card.no-phone {
+            border-left-color: var(--color-success);
+            background: rgba(0, 208, 132, 0.1);
+        }
+        
+        .phone-status {
+            margin-bottom: 15px;
+        }
+        
+        .phone-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        
+        .phone-badge.required {
+            background: var(--color-warning);
+            color: white;
+        }
+        
+        .phone-badge.not-required {
+            background: var(--color-success);
+            color: white;
+        }
+        
+        .phone-notes {
+            white-space: pre-line;
+            line-height: 1.6;
+            color: var(--color-primary);
+            margin-top: 10px;
         }
         
         .site-header {
@@ -692,7 +780,7 @@ HTML_TEMPLATE = """
                 
                 <div class="site-card {{ 'found' if results.suumo.found else 'not-found' }}">
                     <div class="site-header">
-                        <span class="site-name">SUUMO</span>
+                        <span class="site-name">ATBB</span>
                         <span class="status-badge {{ 'success' if results.suumo.found else 'error' }}">
                             {{ '✅ 発見' if results.suumo.found else '❌ 未発見' }}
                         </span>
@@ -703,6 +791,21 @@ HTML_TEMPLATE = """
                     </div>
                     {% endif %}
                 </div>
+            </div>
+            
+            {% if results.phone_step %}
+            <div class="phone-step-card {{ 'phone-required' if results.phone_step.phone_required else 'no-phone' }}">
+                <h3>📞 Step 4: 電話確認</h3>
+                <div class="phone-status">
+                    <span class="phone-badge {{ 'required' if results.phone_step.phone_required else 'not-required' }}">
+                        {{ '📞 電話確認必要' if results.phone_step.phone_required else '✅ 電話確認不要' }}
+                    </span>
+                </div>
+                <div class="phone-notes">
+                    {{ results.phone_step.notes.replace('\n', '<br>')|safe }}
+                </div>
+            </div>
+            {% endif %}
             </div>
             
             <div class="final-verdict {{ 'success' if results.overall_found else 'error' }}">
@@ -813,12 +916,18 @@ HTML_TEMPLATE = """
                         startBtn.disabled = true;
                     }
                     
-                    // ローディングスピナー表示
+                    // 段階的ローディング表示
                     const loadingHTML = `
                         <div class="loading-zone">
                             <div class="loading-spinner"></div>
-                            <h3>AI物確実行中...</h3>
-                            <p>ITANDI・いえらぶBB・ATBB等を巡回中...<br>実際の不動産業務フローに沿って処理しています</p>
+                            <h3>物確実行中...</h3>
+                            <div class="step-progress">
+                                <div class="step active">Step 1: マイソク解析</div>
+                                <div class="step">Step 2: ATBB検索</div>
+                                <div class="step">Step 3: ITANDI検索</div>
+                                <div class="step">Step 4: 電話確認準備</div>
+                            </div>
+                            <p>実際の不動産業務フローに沿って段階的に処理しています</p>
                         </div>
                     `;
                     
@@ -852,91 +961,201 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_pdf():
+    """4ステップ物確システム"""
     try:
         # システム状態の確認
         if not PDF_ANALYZER_AVAILABLE:
             return render_template_string(HTML_TEMPLATE, error="PDF解析機能が利用できません。管理者にお問い合わせください。")
         
-        # リクエスト詳細をログ
-        print(f"📁 Files in request: {list(request.files.keys())}")
-        print(f"🌐 Request method: {request.method}")
-        print(f"📊 Content length: {request.content_length}")
-        
+        # ファイル検証
         if 'pdf_file' not in request.files:
-            print("❌ 'pdf_file' not found in request.files")
-            return render_template_string(HTML_TEMPLATE, error="PDFファイルが選択されていません。もう一度ファイルを選択してください。")
+            return render_template_string(HTML_TEMPLATE, error="PDFファイルが選択されていません。")
         
         file = request.files['pdf_file']
-        print(f"📄 File received: {file.filename}")
+        if not file or file.filename == '' or not file.filename.lower().endswith('.pdf'):
+            return render_template_string(HTML_TEMPLATE, error="有効なPDFファイルを選択してください。")
         
-        if not file or file.filename == '' or file.filename is None:
-            print("❌ Empty filename")
-            return render_template_string(HTML_TEMPLATE, error="有効なファイルが選択されていません。PDFファイルを選択してください。")
+        print(f"📁 ファイル受信: {file.filename}")
         
-        if not file.filename.lower().endswith('.pdf'):
-            print(f"❌ Invalid file type: {file.filename}")
-            return render_template_string(HTML_TEMPLATE, error=f"PDFファイルを選択してください。選択されたファイル: {file.filename}")
+        # Step 1: マイソクPDF解析と物件情報抽出
+        print("📋 Step 1: マイソク解析開始...")
+        step1_result = perform_step1_extraction(file)
+        if not step1_result['success']:
+            return render_template_string(HTML_TEMPLATE, error=step1_result['error'])
         
-        print("✅ File validation passed, starting PDF analysis...")
+        property_data = step1_result['property_data']
+        property_obj = step1_result['property_obj']
         
-        # PDF解析
-        try:
-            analyzer = SimplePDFAnalyzer()
-            result = analyzer.analyze_pdf(file)
-        except Exception as pdf_error:
-            print(f"❌ PDF analysis error: {pdf_error}")
-            return render_template_string(HTML_TEMPLATE, error=f"PDF解析中にエラーが発生しました: {str(pdf_error)}")
+        # Step 2: ATBB検索
+        print("🌐 Step 2: ATBB検索開始...")
+        step2_result = perform_step2_atbb_search(property_data)
         
-        if not result or not result.get('success'):
-            error_msg = result.get('error', 'PDF解析に失敗しました') if result else 'PDF解析に失敗しました'
-            return render_template_string(HTML_TEMPLATE, error=f"PDF解析エラー: {error_msg}")
+        # Step 3: ITANDI検索
+        print("🌐 Step 3: ITANDI検索開始...")
+        step3_result = perform_step3_itandi_search(property_data)
         
-        properties = result.get('properties', [])
-        if not properties:
-            return render_template_string(HTML_TEMPLATE, error="PDFから物件情報を抽出できませんでした。正しい物件PDFファイルかご確認ください。")
+        # Step 4: 電話確認準備
+        print("📞 Step 4: 電話確認準備...")
+        step4_result = perform_step4_phone_preparation(property_data, step2_result, step3_result)
         
-        # 最初の物件で物確実行
-        property_data = properties[0]
-        print(f"📍 対象物件: {property_data.get('address', 'Unknown')}")
+        # 総合結果をまとめる
+        results = compile_final_results(property_obj, step2_result, step3_result, step4_result)
         
-        # 物確実行
-        try:
-            print("🤖 物確システム開始...")
-            browser_checker = RealBrowserPropertyChecker()
-            bukkaku_results = browser_checker.perform_bukkaku(property_data)
-        except Exception as bukkaku_error:
-            print(f"❌ Property verification error: {bukkaku_error}")
-            return render_template_string(HTML_TEMPLATE, error=f"物確処理中にエラーが発生しました: {str(bukkaku_error)}")
-        
-        # PropertyDataオブジェクト作成
-        try:
-            property_obj = PropertyData(property_data)
-        except Exception as data_error:
-            print(f"❌ Property data error: {data_error}")
-            return render_template_string(HTML_TEMPLATE, error=f"物件データ処理中にエラーが発生しました: {str(data_error)}")
-        
-        # 結果をテンプレートに渡す
-        results = {
-            'total': bukkaku_results.get('total', 0),
-            'found': bukkaku_results.get('found', 0),
-            'rate': bukkaku_results.get('rate', 0),
-            'property': property_obj,
-            'itandi': bukkaku_results.get('itandi', {'found': False, 'confidence': 0.0, 'notes': 'エラー'}),
-            'ierabu': bukkaku_results.get('ierabu', {'found': False, 'confidence': 0.0, 'notes': 'エラー'}),
-            'suumo': bukkaku_results.get('suumo', {'found': False, 'confidence': 0.0, 'notes': 'エラー'}),
-            'overall_found': bukkaku_results.get('overall_found', False),
-            'found_sites': bukkaku_results.get('found_sites', []),
-            'source': 'PDF'
-        }
-        
-        print(f"✅ 物確完了 - 発見率: {bukkaku_results.get('rate', 0):.1f}%")
+        print("✅ 4ステップ物確完了")
         return render_template_string(HTML_TEMPLATE, results=results)
         
     except Exception as e:
-        print(f"❌ Unexpected error in upload_pdf: {str(e)}")
+        print(f"❌ システムエラー: {str(e)}")
         import traceback
         traceback.print_exc()
         return render_template_string(HTML_TEMPLATE, error=f"予期しないエラーが発生しました: {str(e)}")
+
+def perform_step1_extraction(file):
+    """Step 1: マイソク物件情報抽出"""
+    try:
+        analyzer = SimplePDFAnalyzer()
+        pdf_results = analyzer.analyze_pdf(file)
+        
+        if not pdf_results.get('success', False):
+            return {
+                'success': False,
+                'error': f"PDF処理エラー: {pdf_results.get('error', '不明なエラー')}"
+            }
+        
+        properties = pdf_results.get('properties', [])
+        if not properties:
+            return {
+                'success': False,
+                'error': "物件情報を抽出できませんでした。正しいマイソクPDFかご確認ください。"
+            }
+        
+        property_data = properties[0]
+        property_obj = PropertyData(property_data)
+        
+        print(f"✅ Step 1完了: {property_data.get('address', 'N/A')}")
+        return {
+            'success': True,
+            'property_data': property_data,
+            'property_obj': property_obj
+        }
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f"Step 1エラー: {str(e)}"
+        }
+
+def perform_step2_atbb_search(property_data):
+    """Step 2: ATBB検索実行"""
+    try:
+        browser_checker = RealBrowserPropertyChecker()
+        browser_checker.property_data = property_data
+        result = browser_checker._check_atbb_real()
+        
+        print(f"✅ Step 2完了 - ATBB: {'発見' if result['found'] else '未発見'}")
+        return result
+        
+    except Exception as e:
+        print(f"❌ Step 2エラー: {e}")
+        return {
+            'found': False,
+            'confidence': 0.0,
+            'error': f"ATBB検索エラー: {str(e)}",
+            'notes': 'ATBB検索でエラーが発生しました'
+        }
+
+def perform_step3_itandi_search(property_data):
+    """Step 3: ITANDI検索実行"""
+    try:
+        browser_checker = RealBrowserPropertyChecker()
+        browser_checker.property_data = property_data
+        result = browser_checker._check_itandi_real()
+        
+        print(f"✅ Step 3完了 - ITANDI: {'発見' if result['found'] else '未発見'}")
+        return result
+        
+    except Exception as e:
+        print(f"❌ Step 3エラー: {e}")
+        return {
+            'found': False,
+            'confidence': 0.0,
+            'error': f"ITANDI検索エラー: {str(e)}",
+            'notes': 'ITANDI検索でエラーが発生しました'
+        }
+
+def perform_step4_phone_preparation(property_data, atbb_result, itandi_result):
+    """Step 4: 電話確認が必要な物件の整理"""
+    try:
+        found_anywhere = atbb_result.get('found', False) or itandi_result.get('found', False)
+        
+        if found_anywhere:
+            phone_required = False
+            phone_notes = "🌐 Web検索で物件が確認できました。電話確認は不要です。"
+        else:
+            phone_required = True
+            address = property_data.get('address', '住所不明')
+            rent = property_data.get('rent', '賃料不明')
+            layout = property_data.get('layout', '間取り不明')
+            
+            phone_notes = f"""📞 Web検索では物件が見つかりませんでした。電話確認が必要です。
+
+確認事項:
+• 物件の現在の募集状況
+• 賃料・条件に変更はないか  
+• 内見可能時期
+• 申込み受付状況
+
+物件情報:
+• 住所: {address}
+• 賃料: {rent}
+• 間取り: {layout}
+
+※管理会社・仲介会社への直接確認をお勧めします"""
+        
+        print(f"✅ Step 4完了 - 電話確認: {'必要' if phone_required else '不要'}")
+        return {
+            'phone_required': phone_required,
+            'notes': phone_notes,
+            'found_sites_count': sum([
+                1 if atbb_result.get('found') else 0,
+                1 if itandi_result.get('found') else 0
+            ])
+        }
+        
+    except Exception as e:
+        print(f"❌ Step 4エラー: {e}")
+        return {
+            'phone_required': True,
+            'notes': f"Step 4処理エラー: {str(e)}",
+            'found_sites_count': 0
+        }
+
+def compile_final_results(property_obj, atbb_result, itandi_result, phone_result):
+    """最終結果をまとめる"""
+    total_sites = 2  # ATBB + ITANDI
+    found_count = sum([
+        1 if atbb_result.get('found') else 0,
+        1 if itandi_result.get('found') else 0
+    ])
+    
+    found_sites = []
+    if atbb_result.get('found'): found_sites.append('ATBB')
+    if itandi_result.get('found'): found_sites.append('ITANDI')
+    
+    overall_found = found_count > 0
+    
+    return {
+        'total': total_sites,
+        'found': found_count,
+        'rate': (found_count / total_sites) * 100,
+        'property': property_obj,
+        'itandi': itandi_result,
+        'suumo': atbb_result,  # フロントエンドではsuumoキーを使用
+        'overall_found': overall_found,
+        'found_sites': found_sites,
+        'phone_step': phone_result,
+        'step_by_step': True  # 段階的処理であることを示す
+    }
 
 
 
