@@ -16,6 +16,15 @@ from src.simple_pdf_analyzer import SimplePDFAnalyzer, PropertyData
 from src.real_browser_checker import RealBrowserPropertyChecker
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB制限
+
+@app.errorhandler(413)
+def too_large(e):
+    return render_template_string(HTML_TEMPLATE, error="ファイルが大きすぎます。50MB以下のPDFファイルを選択してください。"), 413
+
+@app.errorhandler(500)
+def internal_error(e):
+    return render_template_string(HTML_TEMPLATE, error=f"内部サーバーエラー: {str(e)}"), 500
 
 # HTML テンプレート
 HTML_TEMPLATE = """
@@ -788,9 +797,12 @@ def index():
 @app.route('/upload', methods=['POST'])
 def upload_pdf():
     try:
-        # ファイル存在確認（より詳細なデバッグ）
+        # リクエスト詳細をログ
         print(f"📁 Files in request: {list(request.files.keys())}")
         print(f"📝 Form data: {list(request.form.keys())}")
+        print(f"🌐 Request method: {request.method}")
+        print(f"📊 Content length: {request.content_length}")
+        print(f"🔧 Content type: {request.content_type}")
         
         if 'pdf_file' not in request.files:
             print("❌ 'pdf_file' not found in request.files")
