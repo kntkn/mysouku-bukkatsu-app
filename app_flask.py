@@ -549,6 +549,15 @@ HTML_TEMPLATE = """
                 <button type="submit" class="start-btn" id="startBtn">
                     🚀 AI物確スタート
                 </button>
+                
+                <div style="margin-top: 20px;">
+                    <p style="color: var(--color-muted); margin-bottom: 10px;">または</p>
+                    <form method="POST" action="/demo" style="display: inline;">
+                        <button type="submit" class="start-btn" style="background: linear-gradient(135deg, var(--color-warning) 0%, #ffb347 100%); box-shadow: 0 8px 24px rgba(255, 149, 0, 0.3);">
+                            🎯 デモで試す
+                        </button>
+                    </form>
+                </div>
             </div>
         </form>
         
@@ -778,17 +787,28 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_pdf():
-    if 'pdf_file' not in request.files:
-        return render_template_string(HTML_TEMPLATE, error="PDFファイルが選択されていません")
-    
-    file = request.files['pdf_file']
-    if file.filename == '':
-        return render_template_string(HTML_TEMPLATE, error="ファイルが選択されていません")
-    
-    if not file.filename.lower().endswith('.pdf'):
-        return render_template_string(HTML_TEMPLATE, error="PDFファイルを選択してください")
-    
     try:
+        # ファイル存在確認（より詳細なデバッグ）
+        print(f"📁 Files in request: {list(request.files.keys())}")
+        print(f"📝 Form data: {list(request.form.keys())}")
+        
+        if 'pdf_file' not in request.files:
+            print("❌ 'pdf_file' not found in request.files")
+            return render_template_string(HTML_TEMPLATE, error="PDFファイルが選択されていません。もう一度ファイルを選択してください。")
+        
+        file = request.files['pdf_file']
+        print(f"📄 File received: {file.filename}, size: {file.content_length if hasattr(file, 'content_length') else 'unknown'}")
+        
+        if not file or file.filename == '' or file.filename is None:
+            print("❌ Empty filename")
+            return render_template_string(HTML_TEMPLATE, error="有効なファイルが選択されていません。PDFファイルを選択してください。")
+        
+        if not file.filename.lower().endswith('.pdf'):
+            print(f"❌ Invalid file type: {file.filename}")
+            return render_template_string(HTML_TEMPLATE, error=f"PDFファイルを選択してください。選択されたファイル: {file.filename}")
+        
+        print("✅ File validation passed, starting PDF analysis...")
+        
         # PDF解析
         analyzer = SimplePDFAnalyzer()
         result = analyzer.analyze_pdf(file)
@@ -830,6 +850,57 @@ def upload_pdf():
     except Exception as e:
         return render_template_string(HTML_TEMPLATE, error=f"処理エラー: {str(e)}")
 
+
+@app.route('/demo', methods=['GET', 'POST'])
+def demo():
+    """デモ用物確実行"""
+    if request.method == 'GET':
+        return render_template_string(HTML_TEMPLATE)
+    
+    try:
+        print("🎯 デモモード: 物確実行開始")
+        
+        # デモ用物件データ
+        demo_property = {
+            'property_id': 'DEMO_001',
+            'address': '東京都渋谷区',
+            'rent': '15万円',
+            'layout': '1K',
+            'station': '渋谷駅徒歩5分',
+            'area': '25㎡',
+            'age': '築5年',
+            'source_file': 'demo_property'
+        }
+        
+        # ブラウザ自動化による物確実行
+        print("🤖 AI物確システム開始...")
+        browser_checker = BrowserPropertyChecker()
+        bukkaku_results = browser_checker.perform_bukkaku(demo_property)
+        
+        # PropertyDataオブジェクト作成
+        from src.simple_pdf_analyzer import PropertyData
+        property_obj = PropertyData(demo_property)
+        
+        # 結果をテンプレートに渡す
+        results = {
+            'total': bukkaku_results['total'],
+            'found': bukkaku_results['found'],
+            'rate': bukkaku_results['rate'],
+            'property': property_obj,
+            'itandi': bukkaku_results['itandi'],
+            'ierabu': bukkaku_results['ierabu'],
+            'suumo': bukkaku_results['suumo'],
+            'overall_found': bukkaku_results['overall_found'],
+            'found_sites': bukkaku_results.get('found_sites', []),
+            'source': 'Demo'  # デモモードであることを明示
+        }
+        
+        print("✅ デモ物確完了")
+        return render_template_string(HTML_TEMPLATE, results=results)
+        
+    except Exception as e:
+        print(f"❌ デモエラー: {str(e)}")
+        return render_template_string(HTML_TEMPLATE, error=f"デモ実行エラー: {str(e)}")
 
 @app.route('/api/health')
 def health():
